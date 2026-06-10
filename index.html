@@ -968,32 +968,38 @@ function handleQRFile(input) {
 
     img.onload = function() {
       clearTimeout(safetyTimer);
-      try {
-        const canvas = document.createElement('canvas');
-        // Escalar si es muy grande para que jsQR lo procese mejor
-        const maxSize = 1200;
-        let w = img.width, h = img.height;
+
+      function tryDecode(maxSize) {
+        var canvas = document.createElement('canvas');
+        var w = img.width, h = img.height;
         if (w > maxSize || h > maxSize) {
-          const ratio = Math.min(maxSize/w, maxSize/h);
+          var ratio = Math.min(maxSize / w, maxSize / h);
           w = Math.round(w * ratio);
           h = Math.round(h * ratio);
         }
         canvas.width  = w;
         canvas.height = h;
-        const ctx = canvas.getContext('2d');
+        var ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, w, h);
-        const imageData = ctx.getImageData(0, 0, w, h);
-
-        // Intentar leer QR con todos los modos
-        let code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+        var imageData = ctx.getImageData(0, 0, w, h);
+        var code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
         if (!code) code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'invertFirst' });
         if (!code) code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+        return code;
+      }
+
+      try {
+        var code = null;
+        var sizes = [800, 600, 400];
+        for (var i = 0; i < sizes.length && !code; i++) {
+          code = tryDecode(sizes[i]);
+        }
 
         if (code && code.data && code.data.trim()) {
           statusEl.innerHTML = '';
-          const raw     = code.data.trim();
-          const match   = raw.match(/PC-\d{5}/i);
-          const scanned = match ? match[0].toUpperCase() : raw.toUpperCase();
+          var raw     = code.data.trim();
+          var match   = raw.match(/PC-\d{5}/i);
+          var scanned = match ? match[0].toUpperCase() : raw.toUpperCase();
           playSuccessSound();
           processScan(scanned);
         } else {
@@ -1001,9 +1007,8 @@ function handleQRFile(input) {
             '<div class="alert alert-amber">No se detectó QR en la foto. Intenta con mejor luz o más cerca.</div>';
         }
       } catch(err) {
-        statusEl.innerHTML = '<div class="alert alert-amber">Error procesando imagen. Intenta de nuevo.</div>';
+        statusEl.innerHTML = '<div class="alert alert-amber">Error: ' + (err && err.message ? err.message : 'desconocido') + '</div>';
       }
-      // Limpiar input para poder escanear de nuevo
       input.value = '';
     };
 
