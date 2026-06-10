@@ -951,45 +951,74 @@ function handleQRFile(input) {
   const statusEl = document.getElementById('ios-scan-status');
   statusEl.innerHTML = '<div class="loader"><div class="spin"></div>Leyendo QR...</div>';
 
-  const reader = new FileReader();
-  reader.onload = function(e) {
+  // Timeout de seguridad: si en 10 segundos no resuelve, mostrar error
+  const safetyTimer = setTimeout(function() {
+    statusEl.innerHTML = '<div class="alert alert-amber">Tiempo agotado leyendo la imagen. Intenta de nuevo.</div>';
+    input.value = '';
+  }, 10000);
+
+  function processImageData(dataUrl) {
     const img = new Image();
+
+    img.onerror = function() {
+      clearTimeout(safetyTimer);
+      statusEl.innerHTML = '<div class="alert alert-amber">No se pudo cargar la imagen. Intenta de nuevo.</div>';
+      input.value = '';
+    };
+
     img.onload = function() {
-      const canvas = document.createElement('canvas');
-      // Escalar si es muy grande para que jsQR lo procese mejor
-      const maxSize = 1200;
-      let w = img.width, h = img.height;
-      if (w > maxSize || h > maxSize) {
-        const ratio = Math.min(maxSize/w, maxSize/h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
-      }
-      canvas.width  = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const imageData = ctx.getImageData(0, 0, w, h);
+      clearTimeout(safetyTimer);
+      try {
+        const canvas = document.createElement('canvas');
+        // Escalar si es muy grande para que jsQR lo procese mejor
+        const maxSize = 1200;
+        let w = img.width, h = img.height;
+        if (w > maxSize || h > maxSize) {
+          const ratio = Math.min(maxSize/w, maxSize/h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        canvas.width  = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const imageData = ctx.getImageData(0, 0, w, h);
 
-      // Intentar leer QR con ambos modos
-      let code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
-      if (!code) code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'invertFirst' });
-      if (!code) code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+        // Intentar leer QR con todos los modos
+        let code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+        if (!code) code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'invertFirst' });
+        if (!code) code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
 
-      if (code && code.data && code.data.trim()) {
-        statusEl.innerHTML = '';
-        const raw     = code.data.trim();
-        const match   = raw.match(/PC-\d{5}/i);
-        const scanned = match ? match[0].toUpperCase() : raw.toUpperCase();
-        playSuccessSound();
-        processScan(scanned);
-      } else {
-        statusEl.innerHTML =
-          '<div class="alert alert-amber">No se detectó QR en la foto. Intenta con mejor luz o más cerca.</div>';
+        if (code && code.data && code.data.trim()) {
+          statusEl.innerHTML = '';
+          const raw     = code.data.trim();
+          const match   = raw.match(/PC-\d{5}/i);
+          const scanned = match ? match[0].toUpperCase() : raw.toUpperCase();
+          playSuccessSound();
+          processScan(scanned);
+        } else {
+          statusEl.innerHTML =
+            '<div class="alert alert-amber">No se detectó QR en la foto. Intenta con mejor luz o más cerca.</div>';
+        }
+      } catch(err) {
+        statusEl.innerHTML = '<div class="alert alert-amber">Error procesando imagen. Intenta de nuevo.</div>';
       }
       // Limpiar input para poder escanear de nuevo
       input.value = '';
     };
-    img.src = e.target.result;
+
+    // Asignar src DESPUÉS de definir los handlers
+    img.src = dataUrl;
+  }
+
+  const reader = new FileReader();
+  reader.onerror = function() {
+    clearTimeout(safetyTimer);
+    statusEl.innerHTML = '<div class="alert alert-amber">Error leyendo el archivo. Intenta de nuevo.</div>';
+    input.value = '';
+  };
+  reader.onload = function(e) {
+    processImageData(e.target.result);
   };
   reader.readAsDataURL(file);
 }
